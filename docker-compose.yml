@@ -16,6 +16,10 @@ services:
     KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
     KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
     KAFKA_LOG_DIRS: /tmp/kafka-logs
     command: >
      bash -c "if [ ! -f /kafka/kraft-combined-logs/meta.properties ]; then
@@ -41,6 +45,7 @@ services:
 
  producer:
     restart: on-failure
+    image : producer:kafka
     build:
       context: ./producer
     stdin_open: true    
@@ -55,6 +60,7 @@ services:
 
  consumer:
     restart: on-failure
+    image: consumer:kafka
     container_name: consumer
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
