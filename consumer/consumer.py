@@ -9,7 +9,7 @@ consumer = KafkaConsumer(
     group_id='my-group'
 )
 
-print("🔄 منتظر دریافت پیام‌ها... (Ctrl+C برای خروج)")
+print("🔄 Waiting for messages... (Ctrl+C to exit))")
 
 for message in consumer:
-    print(f"📩 پیام دریافت شد: {message.value.decode('utf-8')}")
+    print(f"📩 Message received: {message.value.decode('utf-8')}")

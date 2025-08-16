@@ -5,12 +5,12 @@ producer = KafkaProducer(bootstrap_servers='kafka:9092')
 
 topic = 'my-topic'
 
-print("برای خروج 'exit' وارد کن.")
+print("Enter 'exit' to exit.")
 
 while True:
-    message = input("پیام را وارد کن: ")
+    message = input("Enter the message: ")
     if message.lower() == 'exit':
         break
     producer.send(topic, message.encode('utf-8'))
     producer.flush()
-    print("✅ پیام ارسال شد.")
+    print("✅ The message was sent.")
