@@ -59,11 +59,11 @@ Now that we have a basic understanding, let’s set up Kafka in KRaft mode using
 
 
 ### Requirements
-- ##### Install Docker
+- #### Install Docker
    Make sure you have the latest versions of **[Docker](https://docs.docker.com/engine/install/)** installed on your machine.
    Make sure to [add your user to the `docker` group](https://docs.docker.com/install/linux/linux-postinstall/#manage-docker-as-a-non-root-user) when using Linux.
 
-**Note**: that the ``Docker`` version must be >= 20.10.4.
+*Note*: that the ``Docker`` version must be >= 20.10.4.
 The prior Docker versions may cause permission errors when running the Kafka container, as they do not correctly set directory permissions when creating container paths like /opt/kafka/config.
 If you are using the prior version, you may encounter the following error during container startup:
 ``` bash
@@ -183,9 +183,34 @@ networks:
   kafka-net:
 
 ```
-- **image** contains the organization, image name and the version to use. In this case it will always pull the latest one available.
-- **ports** specifies the ports you use to connect to Kafka.
+
+ **notice** that there is only Kafka services to deploy, no need for Zookeeper anymore ( It’s important to mention that Zookeeper is planned to be removed in Apache Kafka 4.0).
+
+If we use Kafka in KRaft mode, we do not need to use ZooKeeper for cluster coordination or storing metadata. Kafka coordinates the cluster itself using brokers that act as controllers. Kafka also stores the metadata used to track the status of brokers and partitions.
+
+#### 1- Starting the Kafka Server
+
+We’ll start the Kafka server using Kafka Raft (KRaft). First, we need to generate a cluster identifier using the **kafka-storage.sh** script:
 
 ```bash
-docker compose up --build
+command: >
+     bash -c "if [ ! -f /kafka/kraft-combined-logs/meta.properties ]; then
+     /opt/kafka/bin/kafka-storage.sh format -t Mk3OEYBSD34fcwNTJENDM2Qk -c /opt/kafka/config/kraft/server.properties --ignore-formatted --standalone;
+     fi &&
+     /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties"
+
 ```
+This ``command`` block in the ``docker-compose.yml`` ensures that Kafka is **only formatted** once and then **started properly** using the KRaft (Kafka Raft) mode, without ZooKeeper.
+- This checks whether Kafka has already been formatted by verifying if the   meta.properties file exists.
+
+- If the file is missing, it means Kafka hasn't been formatted yet.
+- This command formats Kafka storage using the given Cluster ID.
+
+- ``--ignore-formatted``: Ignores formatting errors if already formatted.
+
+- ``--standalone``: Tells Kafka to use KRaft mode (no ZooKeeper).
+- Once the formatting is done (or skipped if already done), it starts the Kafka broker using the provided config file.
+
+
+
+
