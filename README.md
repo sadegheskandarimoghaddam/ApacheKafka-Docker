@@ -184,11 +184,9 @@ networks:
 
 ```
 
- **notice** that there is only Kafka services to deploy, no need for Zookeeper anymore ( It’s important to mention that Zookeeper is planned to be removed in Apache Kafka 4.0).
+ Let's review some of the key parts of the YAML
 
-If we use Kafka in KRaft mode, we do not need to use ZooKeeper for cluster coordination or storing metadata. Kafka coordinates the cluster itself using brokers that act as controllers. Kafka also stores the metadata used to track the status of brokers and partitions.
-
-#### 1- Starting the Kafka Server
+ **Starting the Kafka Server using Kafka Raft (KRaft)**
 
 We’ll start the Kafka server using Kafka Raft (KRaft). First, we need to generate a cluster identifier using the **kafka-storage.sh** script:
 
@@ -211,6 +209,49 @@ This ``command`` block in the ``docker-compose.yml`` ensures that Kafka is **onl
 - ``--standalone``: Tells Kafka to use KRaft mode (no ZooKeeper).
 - Once the formatting is done (or skipped if already done), it starts the Kafka broker using the provided config file.
 
+**notice** that there is only Kafka services to deploy, no need for Zookeeper anymore ( It’s important to mention that Zookeeper is planned to be removed in Apache Kafka 4.0)
+If we use Kafka in KRaft mode, we do not need to use ZooKeeper for cluster coordination or storing metadata. Kafka coordinates the cluster itself using brokers that act as controllers. Kafka also stores the metadata used to track the status of brokers and partitions.
+
+
+
+```bash
+kafka:
+  image: apache/kafka:latest
+  container_name: kafka
+  ports:
+    - "9092:9092"
+  ```
+- **image** contains the organization, image name and the version to use. In this case it will always pull the latest one available.
+- **ports** specifies the ports you use to connect to Kafka.
+
+```bash
+volumes:
+   - ./data:/kafka/kraft-combined-logs
+```
+- **volumes** map the Kafka logs to a local directory, preserving data between restarts.
+
+*Note*: If you encounter any permission related issue for the data folder, please run following commands:
+```plaintext
+
+sudo chown -R 1000:1000 ./data
+chmod -R 755 ./data
+```
+
+#### environment:
+
+```bash
+KAFKA_NODE_ID: 1
+```
+- ```KAFKA_NODE_ID``` is a unique identifier used to distinguish each Kafka node (or broker) in a Kafka cluster—especially in *KRaft mode* (Kafka without ZooKeeper).
+
+In **KRaft mode** (Kafka Raft metadata mode), each broker must have:
+- A unique node.id (KAFKA_NODE_ID)
+- A consistent configuration matching the cluster metadata
+
+```bash
+KAFKA_PROCESS_ROLES: controller,broker
+```
+- One advantage of the new KRaft mode is that you can have a single Kafka broker to handle both metadata and client requests in small, local development environment. The docker-compose.yml file for this tutorial uses this approach, leading to faster startup times and simpler configuration. Note that, in a production setting, you'll have distinct Kafka brokers for handling requests and operating as a cluster controller.
 
 
 
