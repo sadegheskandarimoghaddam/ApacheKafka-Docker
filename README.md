@@ -253,5 +253,66 @@ KAFKA_PROCESS_ROLES: controller,broker
 ```
 - One advantage of the new KRaft mode is that you can have a single Kafka broker to handle both metadata and client requests in small, local development environment. The docker-compose.yml file for this tutorial uses this approach, leading to faster startup times and simpler configuration. Note that, in a production setting, you'll have distinct Kafka brokers for handling requests and operating as a cluster controller.
 
+```bash
+KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+```
+- specify a set of brokers that will participate in the quorum for electing the controller, using the format ``` nodeId@host:port```
 
+```
+KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+```
+- This config configures the listeners for network connections. In this case, there is one : one for internal communication between brokers (`PLAINTEXT`), one for controller communication (`CONTROLLER`), and one exposed to the host (`PLAINTEXT_HOST`).
 
+```
+KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+```
+- This config maps listener names to security protocols. This setup indicates that the CONTROLLER and PLAINTEXT listeners use the PLAINTEXT protocol.
+
+```
+KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+```
+- Specifies which listener(s) should be used by the controller role.
+
+- Must match a listener name defined in `KAFKA_LISTENERS`.
+
+```
+KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT 
+```
+- Specifies the listener used for inter-broker communication.
+
+- In this case, it’s using the `PLAINTEXT` listener on port `9092`.
+
+```
+KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+```
+- Defines how this Kafka broker advertises itself to clients (like producers and consumers).
+
+- Here, the hostname kafka must match the Docker container name or network alias.
+
+```
+KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+```
+- Sets the replication factor for the internal `__consumer_offsets` topic.
+
+- For single-node setups, this must be `1`.
+
+```
+KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+```
+- Reduces the delay before a group rebalance begins when a new consumer joins.
+
+- Speeds up rebalancing during development/testing.
+
+```
+KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+```
+- Required for transactional messaging.
+
+- In single-node mode:
+
+   - min ISR (in-sync replicas) must be 1
+
+   -  Replication factor must also be 1
+
+   
