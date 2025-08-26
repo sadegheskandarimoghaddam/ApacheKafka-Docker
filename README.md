@@ -185,8 +185,11 @@ networks:
 ```
 
  Let's review some of the key parts of the YAML
+ 
 
- **Starting the Kafka Server using Kafka Raft (KRaft)**
+ ## ![Kafka logo](image/6.png) 
+
+ ## Starting the Kafka Server using Kafka Raft (KRaft)
 
 We’ll start the Kafka server using Kafka Raft (KRaft). First, we need to generate a cluster identifier using the **kafka-storage.sh** script:
 
@@ -237,7 +240,7 @@ sudo chown -R 1000:1000 ./data
 chmod -R 755 ./data
 ```
 
-#### environment:
+### environment:
 
 ```bash
 KAFKA_NODE_ID: 1
@@ -315,4 +318,137 @@ KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
 
    -  Replication factor must also be 1
 
-   
+
+---
+
+## ![UI for Apache Kafka logo](image/5.png) UI for Apache Kafka&nbsp;
+
+#### Versatile, fast and lightweight web UI for managing Apache Kafka
+```
+kafka-ui:
+  image: provectuslabs/kafka-ui:latest
+```
+- Uses the official Kafka UI image from **[Provectus Labs.](https://github.com/provectus/kafka-ui/)**
+- This provides a web-based interface to view Kafka clusters, topics, consumer groups, messages, etc.
+
+```
+  container_name: kafka-ui
+```
+- Sets a fixed name for the container so it’s easier to identify and access (`docker exec -it kafka-ui bash, for example`).
+
+```
+  ports:
+    - "8080:8080"
+```
+- Maps port 8080 inside the container to port 8080 on the host machine.
+
+- You can access the UI in your browser at: http://localhost:8080
+
+```
+  environment:
+    KAFKA_CLUSTERS_0_NAME: kafka-local
+```
+- Sets the display name of the Kafka cluster inside the UI.
+
+- You can name it anything you like (e.g., `dev-cluster`, `local`, `prod-cluster`).
+
+```
+    KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+```
+- Tells Kafka UI how to connect to the Kafka broker.
+
+- In this case, it connects to a broker running in the same Docker network with the hostname `kafka` and `port 9092`.
+
+```
+  depends_on:
+    - kafka
+```
+- Ensures that the Kafka UI container **waits until the Kafka broker container starts**
+Note: This doesn't wait until Kafka is *fully ready*, just that the container is up.
+
+```
+  networks:
+    - kafka-net
+```
+- Attaches this service to the custom Docker network named `kafka-net`.
+
+- All services (e.g., `kafka`, `producer`, `consumer`) need to be on the same network to communicate by hostname.
+
+---
+## ![Kafka logo](image/8.png) Kafka Producer Service
+
+This defines a custom Kafka producer service, which sends messages to a Kafka topic.
+
+```
+  restart: on-failure
+```
+- If the container **crashes or exits with an error**, Docker will automatically restart it.
+
+```
+  image: producer:kafka
+```
+- Sets a **custom image name** (`producer:kafka`) that will be built from the local Dockerfile under `./producer`.
+
+```
+  build:
+    context: ./producer
+```
+- Builds the Docker image using the files in the `./producer` directory (relative to the root of the project).
+
+```
+  stdin_open: true    
+  tty: true
+```
+- Keeps the container’s **STDIN open** and allocates a **pseudo-TTY** (useful for interactive logging/debugging).
+
+- Optional but helpful during development/testing.
+
+```
+  container_name: producer
+```
+- Gives the container a fixed name (`producer`) so it can be referenced easily (e.g., `docker logs producer`).
+
+#### environment:
+```
+    KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+```
+- Passes the Kafka broker address to the producer application via an environment variable.
+
+- Inside the producer script (e.g., Python), this can be read like:
+   ```python
+   import os
+  bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+  ```
+  
+```
+depends_on:
+- kafka
+```
+- Ensures the **Kafka broker container starts first** before this producer runs.
+⚠️ Note: This only waits for the Kafka container to start, **not for Kafka to be ready**. You should implement retry logic in the producer script.
+
+```
+  networks:
+    - kafka-net
+```
+- Connects the producer container to the custom Docker network `kafka-net`, so it can resolve the `kafka` hostname and communicate with the broker.
+
+---
+## ![Kafka logo](image/10.png) Kafka Consumer Service
+
+This service defines the Kafka consumer container which connects to the Kafka broker and listens for messages.
+
+This service is similar to the producer service.
+
+---
+
+# Running Kafka on Docker
+ execute the following command from the <span style="color:red">kafka</span> directory:
+
+```
+ docker compose up -d
+ ```
+ The `-d` flag runs the docker container in detached mode which is similar to running Unix commands in the background by appending `&`. To confirm the container is running, run this command:
+ ```
+ docker logs broker
+ ```
