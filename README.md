@@ -433,12 +433,147 @@ depends_on:
 ```
 - Connects the producer container to the custom Docker network `kafka-net`, so it can resolve the `kafka` hostname and communicate with the broker.
 
+##  Kafka Producer (producer.py)
+This script is a simple **Kafka producer** written in Python. It connects to the Kafka broker and allows the user to **send custom messages** to a Kafka topic from the terminal.
+
+```python
+from kafka import KafkaProducer
+import time
+time.sleep(10)
+producer = KafkaProducer(bootstrap_servers='kafka:9092')
+
+topic = 'my-topic'
+
+print("Enter 'exit' to exit.")
+
+while True:
+    message = input("Enter the message: ")
+    if message.lower() == 'exit':
+        break
+    producer.send(topic, message.encode('utf-8'))
+    producer.flush()
+    print("✅ The message was sent.")
+
+```
+
+#### 🔧 How it works:
+
+**1- Connection Setup:**
+
+```python
+producer = KafkaProducer(bootstrap_servers='kafka:9092')
+```
+- The producer connects to the Kafka broker running at `kafka:9092`.
+
+**2- Topic Selection:**
+```python
+topic = 'my-topic'
+```
+- All messages will be sent to the topic `my-topic`.
+
+**3- Startup Delay:**
+```python
+time.sleep(10)
+```
+- Adds a short delay to ensure the Kafka broker is fully started before the producer tries to connect.
+
+**4- Interactive Messaging:**
+The script waits for user input:
+```python
+message = input("Enter the message: ")
+```
+- If the user types anything, it will be sent as a message to Kafka.
+
+- If the user types `exit`, the loop will stop and the program will terminate.
+
+**5- Sending Messages:**
+```python
+producer.send(topic, message.encode('utf-8'))
+producer.flush()
+```
+- Each entered message is encoded in UTF-8 and sent to Kafka.
+`flush()` ensures the message is actually transmitted before continuing.
+
+**6- User Feedback:**
+After each message is successfully sent, the script prints:
+```python
+✅ The message was sent.
+```
+
+▶️ ***Example usage:***
+
+```python
+docker exec -it producer python producer.py
+```
+
+Sample interaction:
+## ![Kafka producer](image/11.png)
+
 ---
 ## ![Kafka logo](image/10.png) Kafka Consumer Service
 
 This service defines the Kafka consumer container which connects to the Kafka broker and listens for messages.
 
 This service is similar to the producer service.
+
+##  Kafka Consumer (consumer.py)
+
+ This script is a simple `Kafka consumer` written in Python. It connects to a Kafka broker and continuously **listens for messages** from the specified topic.
+
+
+#### 🔧 How it works:
+
+**1- Startup Delay:**
+```python
+time.sleep(10)
+```
+Ensures that the Kafka broker has enough time to start before the consumer attempts to connect.
+
+**2- Consumer Setup:**
+```python
+consumer = KafkaConsumer(
+    'my-topic',
+    bootstrap_servers='kafka:9092',
+    auto_offset_reset='earliest',
+    enable_auto_commit=True,
+    group_id='my_group'
+)
+```
+- **Topic**: Subscribes to `my-topic`
+
+- **bootstrap_servers**: Connects to `kafka:9092`
+
+- **auto_offset_reset**=***'earliest'***: If no committed offset is found, it starts reading from the ***beginning*** of the topic.
+
+- **enable_auto_commit**=***True***: The consumer will automatically commit offsets, so messages are not re-read after restart.
+
+- **group_id**=***'my_group'***: Associates the consumer with the group sadegh. This allows scaling multiple consumers under the same group.
+
+**3- Listening for Messages:**
+```python
+for message in consumer:
+    print(f"📩 Message received: {message.value.decode('utf-8')}", flush=True)
+```
+- Continuously reads messages from `my-topic`.
+
+- Each message is decoded from UTF-8 and printed to the console.
+
+- `flush=True` ensures logs are immediately shown in Docker logs.
+
+**4- User Feedback:**
+Prints a waiting message when starting:
+```python
+🔄 Waiting for messages... (Ctrl+C to exit)
+```
+
+**▶️ Example usage:**
+Run inside the container:
+```python
+docker exec -it consumer python consumer.py
+```
+Output example when producer sends messages:
+
+## ![Kafka Consumer](image/12.png)
 
 ---
 
@@ -448,7 +583,9 @@ This service is similar to the producer service.
 ```
  docker compose up -d
  ```
- The `-d` flag runs the docker container in detached mode which is similar to running Unix commands in the background by appending `&`. To confirm the container is running, run this command:
+ The `-d` flag runs the docker container in detached mode which is similar to running Unix commands in the background by appending `&`. To confirm the containers is running, run this command:
  ```
- docker logs broker
+ docker ps
  ```
+Output:
+## ![containers](image/13.png)
