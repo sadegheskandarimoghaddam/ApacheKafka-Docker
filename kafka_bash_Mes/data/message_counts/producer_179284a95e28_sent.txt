@@ -1,0 +1,2 @@
+Producer: producer_179284a95e28
+Total messages sent: 125

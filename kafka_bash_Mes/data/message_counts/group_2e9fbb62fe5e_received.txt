@@ -1,0 +1,2 @@
+Consumer group: group_2e9fbb62fe5e
+Total messages received: 161
