@@ -1,0 +1,2 @@
+Consumer group: group_5667a60f8d11
+Total messages received: 28779

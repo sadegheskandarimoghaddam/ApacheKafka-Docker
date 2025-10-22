@@ -1,0 +1,2 @@
+Producer: producer_0f163b6f8a03
+Total messages sent: 9592
