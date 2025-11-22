@@ -47,7 +47,7 @@ services:
       - kafka-net
 
  producer:
-    image : producer:V1
+    image : producer:V2
     restart: on-failure
     build:
       context: ./producer
@@ -70,7 +70,7 @@ services:
 
 
  consumer:
-    image: consumer:V3
+    image: consumer:V2
     restart: on-failure
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092

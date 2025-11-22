@@ -26,7 +26,6 @@ if os.path.exists(file_path):
     except Exception as e:
         print(f"⚠️ Could not read previous count ({e}), starting from 0")
 
-# اتصال به Kafka
 consumer = None
 for attempt in range(1, max_retries + 1):
     try:
@@ -35,7 +34,8 @@ for attempt in range(1, max_retries + 1):
             bootstrap_servers=[BROKER],
             auto_offset_reset='earliest',
             enable_auto_commit=True,
-            group_id=GROUP_ID
+            group_id=GROUP_ID,
+            consumer_timeout_ms=500  # کوتاه‌تر برای کنترل دقیق
         )
         print(f"✅ Connected to Kafka on attempt {attempt} with group {GROUP_ID}")
         break
@@ -46,22 +46,45 @@ else:
     print("❌ Failed to connect to Kafka broker after several retries.")
     exit(1)
 
-print("🔄 Reading messages from beginning... Press Ctrl+C to stop.")
+print("🔄 Reading messages... Press Ctrl+C to stop.")
+
+last_report_time = time.time()
+last_received_snapshot = received_count
+report_interval = 5
+
+end_received = False
+end_time = None
+start_time = time.time()
 
 try:
-    for message in consumer:
-        msg_text = message.value.decode()
-        if msg_text == "__END__":
-            print("🛑 __END__ marker received, stopping consumer")
-            break
+    while True:
+        any_message = False
+        for message in consumer:
+            any_message = True
+            msg_text = message.value.decode()
+            if msg_text == "__END__":
+                print("🛑 __END__ marker received, draining extra messages...")
+                end_received = True
+                end_time = time.time()
+                break
 
-        received_count += 1
-        print(f"🟢 [{GROUP_ID}] Received ({received_count}): {msg_text}")
+            received_count += 1
 
-        # ذخیره تعداد پیام‌ها
-        with open(file_path, "w") as f:
-            f.write(f"Consumer group: {GROUP_ID}\n")
-            f.write(f"Total messages received: {received_count}\n")
+            now = time.time()
+            if now - last_report_time >= report_interval:
+                msgs_in_window = received_count - last_received_snapshot
+                rate = msgs_in_window / (now - last_report_time)
+                print(f"🟢 [{GROUP_ID}] Received {msgs_in_window} msgs in {report_interval:.0f}s → {rate:.2f} msg/s (total {received_count})")
+                last_report_time = now
+                last_received_snapshot = received_count
+
+        if end_received:
+            if time.time() - end_time >= 2:  # drain window
+                print("✅ Drain completed. Stopping consumer.")
+                break
+
+        if not any_message:
+            time.sleep(0.05)
 
 except KeyboardInterrupt:
     print(f"🛑 Consumer stopped by user. Total messages received: {received_count}")
@@ -69,4 +92,10 @@ except KeyboardInterrupt:
 finally:
     if consumer:
         consumer.close()
+    runtime_sec = time.time() - start_time
+    with open(file_path, "w") as f:
+        f.write(f"Consumer group: {GROUP_ID}\n")
+        f.write(f"Total messages received: {received_count}\n")
+        f.write(f"Total runtime_seconds: {runtime_sec:.3f}\n")
+        f.write(f"Total runtime_human: {int(runtime_sec//3600)}h {int((runtime_sec%3600)//60)}m {int(runtime_sec%60)}s\n")
     print(f"✅ Message count saved to {file_path}")

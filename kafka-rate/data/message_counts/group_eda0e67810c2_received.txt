@@ -1,2 +1,0 @@
-Consumer group: group_eda0e67810c2
-Total messages received: 28779
