@@ -35,7 +35,7 @@ partitions=${partitions:-6}
 replication_factor=${replication_factor:-3}
 
 if [ "$kafka_count" -lt 3 ]; then
-  echo "⚠️ kafka_count < 3 — حداقل 3 نود برای quorum لازم است. استفاده از 3."
+  echo "⚠️ kafka_count < 3 — At least 3 nodes are required for quorum. Use 3."
   kafka_count=3
 fi
 
@@ -103,6 +103,7 @@ for i in $(seq 4 $kafka_count); do
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka${i}:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LOG_DIRS: /kafka/data
     volumes:
       - ./data/kafka${i}:/kafka/data
