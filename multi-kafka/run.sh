@@ -7,7 +7,7 @@ set -euo pipefail
 # ----------------------------
 # Parse command-line arguments
 # ----------------------------
-while getopts ":c:p:t:m:r:d:x:f:k:" opt; do
+while getopts ":c:p:t:m:r:d:x:f:k:b:l:" opt; do
   case $opt in
     c) consumer_count=$OPTARG ;;
     p) producer_count=$OPTARG ;;
@@ -18,6 +18,9 @@ while getopts ":c:p:t:m:r:d:x:f:k:" opt; do
     x) partitions=$OPTARG ;;
     f) replication_factor=$OPTARG ;;
     k) kafka_count=$OPTARG ;;
+    b) BATCH_SIZE_BYTES=$OPTARG ;;   # Kafka producer batch size in bytes
+    l) LINGER_MS=$OPTARG ;;          # Kafka producer linger.ms
+
     \?) 
       echo "Usage: run.sh -c <cons> -p <prod> -t <topic> -m <msg> -r <rate> -d <dur> -x <part> -f <rf> -k <kafka_count>"
       exit 1
@@ -34,8 +37,9 @@ consumer_count=${consumer_count:-1}
 partitions=${partitions:-6}
 replication_factor=${replication_factor:-3}
 
+
 if [ "$kafka_count" -lt 3 ]; then
-  echo "⚠️ kafka_count < 3 — At least 3 nodes are required for quorum. Use 3."
+  echo "⚠️ kafka_count < 3 — حداقل 3 نود برای quorum لازم است. استفاده از 3."
   kafka_count=3
 fi
 
@@ -43,6 +47,11 @@ export TOPIC_NAME=${topic_name:-test-topic}
 export MESSAGE_TEXT=${message_text:-"hello"}
 export RATE_PER_SEC=${rate_per_sec:-1}
 export DURATION=${duration:-""}
+export BATCH_SIZE_BYTES=${BATCH_SIZE_BYTES:-16384}  # default 16 KB
+export LINGER_MS=${LINGER_MS:-5}                    # default 5 ms
+
+
+
 
 echo "🔧 Requested brokers: $kafka_count (first 3 => controllers)"
 echo "🔧 Partitions: $partitions  Replication: $replication_factor"
@@ -84,11 +93,13 @@ echo "🧩 Controller quorum: $QUORUM"
 # Generate docker-compose.override.yml for extra brokers
 # ----------------------------
 OVERRIDE="docker-compose.override.yml"
-echo "services:" > "$OVERRIDE"
 
-for i in $(seq 4 $kafka_count); do
-  host_port=$((9092 + i - 1)) # dynamic host port to avoid collision
-  cat >> "$OVERRIDE" <<EOF
+if [ "$kafka_count" -gt 3 ]; then
+    echo "services:" > "$OVERRIDE"
+
+    for i in $(seq 4 $kafka_count); do
+        host_port=$((9092 + i - 1)) # dynamic host port to avoid collision
+        cat >> "$OVERRIDE" <<EOF
 
   kafka${i}:
     image: apache/kafka:latest
@@ -103,15 +114,15 @@ for i in $(seq 4 $kafka_count); do
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka${i}:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LOG_DIRS: /kafka/data
     volumes:
       - ./data/kafka${i}:/kafka/data
 
 EOF
-done
-
-echo "✅ override file written: $OVERRIDE"
+    done
+else
+    rm -f "$OVERRIDE"
+fi
 
 # ----------------------------
 # Start base services (kafka1..3 + producer/consumer)
@@ -161,6 +172,17 @@ fi
 # ----------------------------
 echo "🚀 Starting producers/consumers (producer=$producer_count consumer=$consumer_count)..."
 docker compose up -d --scale producer="$producer_count" --scale consumer="$consumer_count"
+
+# ----------------------------
+# Optional: stop cluster after $DURATION seconds
+# ----------------------------
+if [ -n "$DURATION" ]; then
+    echo "⏳ Running for $DURATION seconds..."
+    sleep "$DURATION"
+
+    echo "🛑 Stopping Kafka cluster and producers/consumers..."
+    docker compose down
+fi
 
 echo "🎉 Done. Cluster up with $kafka_count brokers."
 echo "  Topic: ${topic_name:-<none>}"

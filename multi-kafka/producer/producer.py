@@ -5,113 +5,158 @@ import signal
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
 
-# Read multi-node Kafka cluster
+# =========================
+# Configuration
+# =========================
 BROKERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka1:9092")
 BROKER_LIST = BROKERS.split(",")
 
-TOPIC_NAME = os.getenv('TOPIC_NAME', 'my-topic')
-MESSAGE_TEXT = os.getenv('MESSAGE_TEXT', 'Hello Kafka')
+TOPIC_NAME = os.getenv("TOPIC_NAME", "my-topic")
+MESSAGE_TEXT = os.getenv("MESSAGE_TEXT", "Hello Kafka")
 
-RATE_PER_SEC = int(os.getenv('RATE_PER_SEC', '1'))
-DURATION = os.getenv('DURATION')
-DURATION = float(DURATION) if DURATION not in [None, "", "0"] else None
+RATE_PER_SEC = int(os.getenv("RATE_PER_SEC", "1"))
+DURATION = os.getenv("DURATION")
+DURATION = float(DURATION) if DURATION not in (None, "", "0") else None
+
+BATCH_SIZE = int(os.getenv("BATCH_SIZE_BYTES", 16384))  # 16 KB default
+LINGER_MS = int(os.getenv("LINGER_MS", 5))               # 5 ms default
+
 
 PRODUCER_NAME = f"producer_{socket.gethostname()}"
 
+# =========================
+# State
+# =========================
+created_count = 0
+enqueued_count = 0
+acked_count = 0
+stop_requested = False
+
+
+# =========================
+# Metrics file
+# =========================
 count_dir = "/app/message_counts"
 os.makedirs(count_dir, exist_ok=True)
 file_path = os.path.join(count_dir, f"{PRODUCER_NAME}_sent.txt")
 
-sent_count = 0
-stop_requested = False
-
-
+# =========================
+# Signal handling
+# =========================
 def handle_stop_signal(signum, frame):
     global stop_requested
     stop_requested = True
-    print("🛑 Stop signal received. Will send __END__ and exit cleanly...")
-
+    print("🛑 Stop signal received")
 
 signal.signal(signal.SIGTERM, handle_stop_signal)
 signal.signal(signal.SIGINT, handle_stop_signal)
 
+# =========================
+# ACK callbacks
+# =========================
+def on_send_success(record_metadata):
+    global acked_count
+    acked_count += 1
 
-# Connect producer with 3 brokers
+def on_send_error(excp):
+    print(f"❌ Send failed: {excp}")
+
+# =========================
+# Kafka Producer
+# =========================
 for _ in range(10):
     try:
         producer = KafkaProducer(
             bootstrap_servers=BROKER_LIST,
-            value_serializer=lambda v: v.encode('utf-8'),
-            linger_ms=5
+            value_serializer=lambda v: v.encode("utf-8"),
+            batch_size=BATCH_SIZE,
+            linger_ms=LINGER_MS,
+            acks="all",
+            retries=5,
+            max_in_flight_requests_per_connection=5,
         )
         break
     except NoBrokersAvailable:
-        print("⏳ Kafka broker not available yet, retrying...")
+        print("⏳ Kafka not ready, retrying...")
         time.sleep(5)
 else:
-    raise Exception("❌ Kafka broker not available after several retries.")
-
-
-BATCH_INTERVAL = 0.2
-batch_size = max(1, int(RATE_PER_SEC * BATCH_INTERVAL))
+    raise RuntimeError("Kafka broker not available")
 
 total_messages = int(RATE_PER_SEC * DURATION) if DURATION else None
 
-if DURATION:
-    print(f"🚀 Running for {DURATION}s, sending {total_messages} messages...")
-else:
-    print(f"🚀 Running WITHOUT duration. Infinite mode at {RATE_PER_SEC} msg/s")
+print(
+    f"🚀 Producer started | rate={RATE_PER_SEC}/s "
+    f"| linger_ms={LINGER_MS}"
+    f"| batch_size={BATCH_SIZE} bytes"
+)
 
-start_time = time.time()
-last_report_time = start_time
-last_sent_snapshot = 0
-report_interval = 5
+# =========================
+# Time control
+# =========================
+start_time = time.monotonic()
+next_send_time = start_time
+last_report = start_time
+REPORT_INTERVAL = 5.0
 
+# =========================
+# Main loop
+# =========================
 try:
     while True:
+        now = time.monotonic()
+
         if stop_requested:
             break
+        if DURATION and (now - start_time) >= DURATION:
+            break
+        if total_messages and created_count >= total_messages:
+            break
 
-        if DURATION:
-            elapsed = time.time() - start_time
-            if elapsed >= DURATION or sent_count >= total_messages:
-                break
+        if now < next_send_time:
+            time.sleep(next_send_time - now)
+            continue
+        next_send_time += 1.0 / RATE_PER_SEC
 
-        for _ in range(batch_size):
-            if DURATION and sent_count >= total_messages:
-                break
+        msg = f"{MESSAGE_TEXT} {created_count} from {PRODUCER_NAME}"
+        created_count += 1
 
-            message = f"{MESSAGE_TEXT} {sent_count} from {PRODUCER_NAME}"
-            producer.send(TOPIC_NAME, value=message)
-            sent_count += 1
+        future = producer.send(TOPIC_NAME, value=msg)
+        future.add_callback(on_send_success)
+        future.add_errback(on_send_error)
+        enqueued_count += 1
 
-        producer.flush()
 
-        with open(file_path, "w") as f:
-            f.write(f"Producer: {PRODUCER_NAME}\n")
-            f.write(f"Total messages sent: {sent_count}\n")
+        if now - last_report >= REPORT_INTERVAL:
+            with open(file_path, "w") as f:
+                f.write(f"Producer: {PRODUCER_NAME}\n")
+                f.write(f"Created:  {created_count}\n")
+                f.write(f"Enqueued: {enqueued_count}\n")
+                f.write(f"Acked:    {acked_count}\n")
 
-        now = time.time()
-        if now - last_report_time >= report_interval:
-            msgs_in_window = sent_count - last_sent_snapshot
-            rate = msgs_in_window / (now - last_report_time)
-            print(f"📊 Sent {msgs_in_window} msgs in {report_interval}s → {rate:.2f} msg/s "
-                  f"(total {sent_count})")
-            last_report_time = now
-            last_sent_snapshot = sent_count
-
-        next_batch_time = start_time + (sent_count / RATE_PER_SEC)
-        sleep_time = next_batch_time - time.time()
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-
-    print("🎯 Sending __END__ marker...")
-    producer.send(TOPIC_NAME, value="__END__")
-    producer.flush()
-
-except Exception as e:
-    print(f"❌ Error: {e}")
-
+            print(
+                f"📊 created={created_count} "
+                f"enqueued={enqueued_count} "
+                f"acked={acked_count}"
+            )
+            last_report = now
 finally:
-    producer.close()
-    print(f"✅ Producer finished. Total messages sent: {sent_count}")
+    print("⏳ SIGTERM or exit detected — flushing Kafka producer")
+
+    try:
+        producer.flush(timeout=30)
+    finally:
+        producer.close()
+
+    with open(file_path, "w") as f:
+        f.write(f"Producer: {PRODUCER_NAME}\n")
+        f.write(f"Created:  {created_count}\n")
+        f.write(f"Enqueued: {enqueued_count}\n")
+        f.write(f"Acked:    {acked_count}\n")
+
+    print(
+        f"✅ Producer stopped safely → "
+        f"created={created_count}, "
+        f"enqueued={enqueued_count}, "
+        f"acked={acked_count}"
+    )
+    

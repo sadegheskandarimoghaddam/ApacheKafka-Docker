@@ -64,6 +64,8 @@ services:
       MESSAGE_TEXT: "${MESSAGE_TEXT}"
       RATE_PER_SEC: "${RATE_PER_SEC}"
       DURATION: "${DURATION}"
+      BATCH_SIZE_BYTES: "${BATCH_SIZE_BYTES}"
+      LINGER_MS: "${LINGER_MS}"
     depends_on:
       - kafka1
       - kafka2
@@ -73,6 +75,7 @@ services:
   consumer:
     build: ./consumer
     image: consumer:V1
+    user: root
     stdin_open: true
     tty: true
     environment:
