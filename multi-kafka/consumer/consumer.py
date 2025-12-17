@@ -9,6 +9,11 @@ from kafka.errors import NoBrokersAvailable
 # -------------------------------
 TOPIC_NAME = os.getenv('TOPIC_NAME', 'my-topic')
 BROKERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka1:9092")
+EXPECTED_TEXT = os.getenv("MESSAGE_TEXT")
+if not EXPECTED_TEXT:
+    raise RuntimeError("MESSAGE_TEXT not provided to consumer (cannot validate messages)")
+
+
 
 BROKER_LIST = BROKERS.split(",")
 
@@ -27,6 +32,9 @@ file_path = f"/app/message_counts/{GROUP_ID}_received.txt"
 # Resume previous count if exists
 # -------------------------------
 received_count = 0
+confirmed_count = 0
+mismatch_count = 0
+
 if os.path.exists(file_path):
     try:
         with open(file_path, "r") as f:
@@ -50,7 +58,8 @@ for attempt in range(1, max_retries + 1):
             auto_offset_reset='earliest',
             enable_auto_commit=True,
             group_id=GROUP_ID,
-            max_poll_records=500  
+            max_poll_records=500,
+            value_deserializer=lambda v: v.decode("utf-8")
         )
         print(f"✅ Connected to Kafka cluster on attempt {attempt} with group {GROUP_ID}")
         break
@@ -79,12 +88,22 @@ try:
                 batch_count += 1
                 received_count += 1
 
+                value = message.value
+
+                if value.startswith(EXPECTED_TEXT):
+                    confirmed_count += 1
+                else:
+                    mismatch_count += 1
+
+
         if batch_count > 0:
             # Write updated count to file after each batch
             runtime_sec = time.time() - start_time
             with open(file_path, "w") as f:
                 f.write(f"Consumer group: {GROUP_ID}\n")
-                f.write(f"Total messages received: {received_count}\n")
+                f.write(f"Expected message: {EXPECTED_TEXT}\n")
+                f.write(f"Confirmed (matched): {confirmed_count}\n")
+                f.write(f"Mismatched: {mismatch_count}\n")
                 f.write(f"Total runtime_seconds: {runtime_sec:.3f}\n")
                 f.write(f"Total runtime_human: {int(runtime_sec//3600)}h {int((runtime_sec%3600)//60)}m {int(runtime_sec%60)}s\n")
             print(f"🟢 [{GROUP_ID}] Received {batch_count} msgs → total {received_count}")
@@ -103,7 +122,9 @@ finally:
     runtime_sec = time.time() - start_time
     with open(file_path, "w") as f:
         f.write(f"Consumer group: {GROUP_ID}\n")
-        f.write(f"Total messages received: {received_count}\n")
+        f.write(f"Expected message: {EXPECTED_TEXT}\n")
+        f.write(f"Confirmed (matched): {confirmed_count}\n")
+        f.write(f"Mismatched: {mismatch_count}\n")
         f.write(f"Total runtime_seconds: {runtime_sec:.3f}\n")
         f.write(f"Total runtime_human: {int(runtime_sec//3600)}h {int((runtime_sec%3600)//60)}m {int(runtime_sec%60)}s\n")
 
