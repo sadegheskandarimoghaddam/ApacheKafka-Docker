@@ -10,38 +10,29 @@ from kafka.errors import NoBrokersAvailable
 # =========================
 BROKERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka1:9092")
 BROKER_LIST = BROKERS.split(",")
-
 TOPIC_NAME = os.getenv("TOPIC_NAME", "my-topic")
 MESSAGE_TEXT = os.getenv("MESSAGE_TEXT", "Hello Kafka")
-
 RATE_PER_SEC = int(os.getenv("RATE_PER_SEC", "1"))
 DURATION = os.getenv("DURATION")
 DURATION = float(DURATION) if DURATION not in (None, "", "0") else None
-
-BATCH_SIZE = int(os.getenv("BATCH_SIZE_BYTES", 16384))  # 16 KB default
-LINGER_MS = int(os.getenv("LINGER_MS", 5))               # 5 ms default
-
-
+BATCH_SIZE = int(os.getenv("BATCH_SIZE_BYTES", 16384))
+LINGER_MS = int(os.getenv("LINGER_MS", 5))
 PRODUCER_NAME = f"producer_{socket.gethostname()}"
 
 # =========================
 # State
 # =========================
 created_count = 0
-enqueued_count = 0
 acked_count = 0
 stop_requested = False
 
-
-# =========================
-# Metrics file
-# =========================
+# Metrics file setup
 count_dir = "/app/message_counts"
 os.makedirs(count_dir, exist_ok=True)
 file_path = os.path.join(count_dir, f"{PRODUCER_NAME}_sent.txt")
 
 # =========================
-# Signal handling
+# Signal handling & Callbacks
 # =========================
 def handle_stop_signal(signum, frame):
     global stop_requested
@@ -51,9 +42,6 @@ def handle_stop_signal(signum, frame):
 signal.signal(signal.SIGTERM, handle_stop_signal)
 signal.signal(signal.SIGINT, handle_stop_signal)
 
-# =========================
-# ACK callbacks
-# =========================
 def on_send_success(record_metadata):
     global acked_count
     acked_count += 1
@@ -62,9 +50,10 @@ def on_send_error(excp):
     print(f"❌ Send failed: {excp}")
 
 # =========================
-# Kafka Producer
+# Kafka Producer (Single, Clean Block)
 # =========================
-for _ in range(10):
+producer = None
+for i in range(1, 11):
     try:
         producer = KafkaProducer(
             bootstrap_servers=BROKER_LIST,
@@ -72,91 +61,68 @@ for _ in range(10):
             batch_size=BATCH_SIZE,
             linger_ms=LINGER_MS,
             acks="all",
-            retries=5,
-            max_in_flight_requests_per_connection=5,
+            retries=999999,              
+            request_timeout_ms=5000,     
+            metadata_max_age_ms=1000,    
+            max_in_flight_requests_per_connection=1 
         )
+        print("✅ Connected to Kafka")
         break
     except NoBrokersAvailable:
-        print("⏳ Kafka not ready, retrying...")
+        print(f"⏳ Kafka not ready (attempt {i}/10), retrying...")
         time.sleep(5)
-else:
-    raise RuntimeError("Kafka broker not available")
 
-total_messages = int(RATE_PER_SEC * DURATION) if DURATION else None
-
-print(
-    f"🚀 Producer started | rate={RATE_PER_SEC}/s "
-    f"| linger_ms={LINGER_MS}"
-    f"| batch_size={BATCH_SIZE} bytes"
-)
-
-# =========================
-# Time control
-# =========================
-start_time = time.monotonic()
-next_send_time = start_time
-last_report = start_time
-REPORT_INTERVAL = 5.0
+if producer is None:
+    print("❌ Failed to connect to Kafka.")
+    exit(1)
 
 # =========================
 # Main loop
 # =========================
-try:
-    while True:
-        now = time.monotonic()
+print(f"🚀 Producer started | rate={RATE_PER_SEC}/s")
+start_time = time.monotonic()
+next_send_time = start_time
+last_report = start_time
 
-        if stop_requested:
-            break
+try:
+    while not stop_requested:
+        now = time.monotonic()
         if DURATION and (now - start_time) >= DURATION:
-            break
-        if total_messages and created_count >= total_messages:
             break
 
         if now < next_send_time:
-            time.sleep(next_send_time - now)
+            time.sleep(max(0, next_send_time - now))
             continue
+        
         next_send_time += 1.0 / RATE_PER_SEC
 
-        msg = f"{MESSAGE_TEXT} {created_count} from {PRODUCER_NAME}"
-        created_count += 1
+        # GAP CONTROL: Wait if Kafka is struggling to keep up
+        while (created_count - acked_count) > 5 and not stop_requested:
+            time.sleep(0.1)
 
-        future = producer.send(TOPIC_NAME, value=msg)
-        future.add_callback(on_send_success)
-        future.add_errback(on_send_error)
-        enqueued_count += 1
+        unique_id = f"{PRODUCER_NAME}:{created_count}"
+        msg = f"{unique_id}|{MESSAGE_TEXT}"
 
+        try:
+            producer.send(TOPIC_NAME, value=msg).add_callback(on_send_success).add_errback(on_send_error)
+            created_count += 1 
+        except Exception as e:
+            print(f"⚠️ Producer error: {e}")
+            time.sleep(1)
 
-        if now - last_report >= REPORT_INTERVAL:
-            with open(file_path, "w") as f:
-                f.write(f"Producer: {PRODUCER_NAME}\n")
-                f.write(f"Created:  {created_count}\n")
-                f.write(f"Enqueued: {enqueued_count}\n")
-                f.write(f"Acked:    {acked_count}\n")
-
-            print(
-                f"📊 created={created_count} "
-                f"enqueued={enqueued_count} "
-                f"acked={acked_count}"
-            )
+        if now - last_report >= 5.0:
+            print(f"📊 Created: {created_count} | Acked: {acked_count}")
             last_report = now
-finally:
-    print("⏳ SIGTERM or exit detected — flushing Kafka producer")
 
-    try:
+finally:
+    print(f"⏳ Finalizing... Created: {created_count}, Acked: {acked_count}")
+    if producer:
         producer.flush(timeout=30)
-    finally:
         producer.close()
 
     with open(file_path, "w") as f:
         f.write(f"Producer: {PRODUCER_NAME}\n")
         f.write(f"Created:  {created_count}\n")
-        f.write(f"Enqueued: {enqueued_count}\n")
         f.write(f"Acked:    {acked_count}\n")
-
-    print(
-        f"✅ Producer stopped safely → "
-        f"created={created_count}, "
-        f"enqueued={enqueued_count}, "
-        f"acked={acked_count}"
-    )
     
+    print(f"✅ Final Result: {acked_count} confirmed.")

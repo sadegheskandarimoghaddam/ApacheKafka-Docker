@@ -34,6 +34,8 @@ file_path = f"/app/message_counts/{GROUP_ID}_received.txt"
 received_count = 0
 confirmed_count = 0
 mismatch_count = 0
+duplicate_count = 0    # <--- ADD THIS
+seen_ids = set()       # <--- ADD THIS
 
 if os.path.exists(file_path):
     try:
@@ -89,11 +91,28 @@ try:
                 received_count += 1
 
                 value = message.value
-
-                if value.startswith(EXPECTED_TEXT):
-                    confirmed_count += 1
-                else:
+                
+                # --- NEW LOGIC START ---
+                try:
+                    # Split only at the first '|' we find
+                    msg_id, actual_content = value.split('|', 1)
+                    
+                    if msg_id in seen_ids:
+                        duplicate_count += 1
+                        # We don't count duplicates as "confirmed_count" 
+                        # because they aren't new data
+                    else:
+                        seen_ids.add(msg_id)
+                        # Check the text part like before
+                        if actual_content.startswith(EXPECTED_TEXT):
+                            confirmed_count += 1
+                        else:
+                            mismatch_count += 1
+                            
+                except ValueError:
+                    # This handles cases where '|' might be missing
                     mismatch_count += 1
+                # --- NEW LOGIC END ---
 
 
         if batch_count > 0:
@@ -103,17 +122,20 @@ try:
                 f.write(f"Consumer group: {GROUP_ID}\n")
                 f.write(f"Expected message: {EXPECTED_TEXT}\n")
                 f.write(f"Confirmed (matched): {confirmed_count}\n")
-                f.write(f"Mismatched: {mismatch_count}\n")
+                f.write(f"Confirmed (unique): {confirmed_count}\n")
+                f.write(f"Duplicates: {duplicate_count}\n") # Add this
+                f.write(f"Mismatched/Error: {mismatch_count}\n")
+                f.write(f"Total Unique IDs: {len(seen_ids)}\n") # Useful for loss calculation
                 f.write(f"Total runtime_seconds: {runtime_sec:.3f}\n")
                 f.write(f"Total runtime_human: {int(runtime_sec//3600)}h {int((runtime_sec%3600)//60)}m {int(runtime_sec%60)}s\n")
-            print(f"🟢 [{GROUP_ID}] Received {batch_count} msgs → total {received_count}")
+            print(f"[{GROUP_ID}] Received {batch_count} msgs → total {received_count}")
 
         else:
             # No messages, short sleep to avoid busy loop
             time.sleep(0.05)
 
 except KeyboardInterrupt:
-    print(f"🛑 Consumer stopped by user. Total messages received: {received_count}")
+    print(f"Consumer stopped by user. Total messages received: {received_count}")
 
 finally:
     if consumer:
@@ -124,8 +146,11 @@ finally:
         f.write(f"Consumer group: {GROUP_ID}\n")
         f.write(f"Expected message: {EXPECTED_TEXT}\n")
         f.write(f"Confirmed (matched): {confirmed_count}\n")
-        f.write(f"Mismatched: {mismatch_count}\n")
+        f.write(f"Confirmed (unique): {confirmed_count}\n")
+        f.write(f"Duplicates: {duplicate_count}\n")
+        f.write(f"Mismatched/Error: {mismatch_count}\n")
+        f.write(f"Total Unique IDs: {len(seen_ids)}\n") # THIS IS THE GOLDEN NUMBER
         f.write(f"Total runtime_seconds: {runtime_sec:.3f}\n")
         f.write(f"Total runtime_human: {int(runtime_sec//3600)}h {int((runtime_sec%3600)//60)}m {int(runtime_sec%60)}s\n")
 
-    print(f"✅ Message count saved to {file_path}")
+    print(f"✅ Final metrics saved to {file_path}")

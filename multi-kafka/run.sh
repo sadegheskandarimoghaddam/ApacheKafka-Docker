@@ -98,7 +98,7 @@ if [ "$kafka_count" -gt 3 ]; then
     echo "services:" > "$OVERRIDE"
 
     for i in $(seq 4 $kafka_count); do
-        host_port=$((9092 + i - 1)) # dynamic host port to avoid collision
+        host_port=$((9092 + i - 1))
         cat >> "$OVERRIDE" <<EOF
 
   kafka${i}:
@@ -111,6 +111,9 @@ if [ "$kafka_count" -gt 3 ]; then
       KAFKA_PROCESS_ROLES: broker
       KAFKA_CLUSTER_ID: "BfCkSkDsTt-Ro0Gd2J3s1Q"
       KAFKA_CONTROLLER_QUORUM_VOTERS: ${QUORUM}
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka${i}:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -163,8 +166,9 @@ if [ -n "${topic_name:-}" ]; then
     --topic "$topic_name" \
     --partitions "$partitions" \
     --replication-factor "$replication_factor" \
+    --config min.insync.replicas=2 \
     --bootstrap-server kafka1:9092 \
-    --if-not-exists || echo "⚠️ topic may already exist"
+    --if-not-exists
 fi
 
 # ----------------------------
