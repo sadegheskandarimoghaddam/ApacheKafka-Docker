@@ -114,6 +114,7 @@ if [ "$kafka_count" -gt 3 ]; then
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka${i}:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LOG_DIRS: /kafka/data
     volumes:
       - ./data/kafka${i}:/kafka/data
