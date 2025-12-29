@@ -72,8 +72,11 @@ for _ in range(10):
             batch_size=BATCH_SIZE,
             linger_ms=LINGER_MS,
             acks="all",
-            retries=5,
             max_in_flight_requests_per_connection=5,
+            retries=999999,                      # Keep retrying the same messages
+            request_timeout_ms=60000,            # 60 seconds per attempt
+            retry_backoff_ms=1000,               # Wait 1s between retries
+            metadata_max_age_ms=10000,
         )
         break
     except NoBrokersAvailable:
@@ -105,6 +108,8 @@ try:
     while True:
         now = time.monotonic()
 
+        producer_gap = created_count - acked_count
+
         if stop_requested:
             break
         if DURATION and (now - start_time) >= DURATION:
@@ -115,6 +120,7 @@ try:
         if now < next_send_time:
             time.sleep(next_send_time - now)
             continue
+
         next_send_time += 1.0 / RATE_PER_SEC
 
         msg = f"{MESSAGE_TEXT} {created_count} from {PRODUCER_NAME}"
@@ -132,11 +138,13 @@ try:
                 f.write(f"Created:  {created_count}\n")
                 f.write(f"Enqueued: {enqueued_count}\n")
                 f.write(f"Acked:    {acked_count}\n")
+                f.write(f"Gap:      {producer_gap}\n") 
 
             print(
                 f"📊 created={created_count} "
                 f"enqueued={enqueued_count} "
-                f"acked={acked_count}"
+                f"acked={acked_count} "
+                f"GAP: {producer_gap}"
             )
             last_report = now
 finally:
@@ -152,11 +160,13 @@ finally:
         f.write(f"Created:  {created_count}\n")
         f.write(f"Enqueued: {enqueued_count}\n")
         f.write(f"Acked:    {acked_count}\n")
+        f.write(f"Gap:      {producer_gap}\n")
 
     print(
         f"✅ Producer stopped safely → "
         f"created={created_count}, "
         f"enqueued={enqueued_count}, "
-        f"acked={acked_count}"
+        f"acked={acked_count} "
+        f"Gap={producer_gap} "
     )
     

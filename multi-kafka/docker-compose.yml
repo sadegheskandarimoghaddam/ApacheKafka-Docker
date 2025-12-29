@@ -14,10 +14,10 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_LOG_DIRS: /kafka/data
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    volumes:
-      - ./data/kafka1:/kafka/data
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+    # volumes:
+    #   - ./data/kafka1:/kafka/data
 
   kafka2:
     image: apache/kafka:latest
@@ -32,9 +32,9 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_LOG_DIRS: /kafka/data
-    volumes:
-      - ./data/kafka2:/kafka/data
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+    # volumes:
+    #   - ./data/kafka2:/kafka/data
 
   kafka3:
     image: apache/kafka:latest
@@ -50,8 +50,8 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_LOG_DIRS: /kafka/data
-    volumes:
-      - ./data/kafka3:/kafka/data
+    # volumes:
+    #   - ./data/kafka3:/kafka/data
 
   producer:
     build: ./producer
