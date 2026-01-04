@@ -123,7 +123,8 @@ try:
 
         next_send_time += 1.0 / RATE_PER_SEC
 
-        msg = f"{MESSAGE_TEXT} {created_count} from {PRODUCER_NAME}"
+        unique_id = f"{PRODUCER_NAME}:{created_count}"
+        msg = f"{unique_id}|{MESSAGE_TEXT}"
         created_count += 1
 
         future = producer.send(TOPIC_NAME, value=msg)

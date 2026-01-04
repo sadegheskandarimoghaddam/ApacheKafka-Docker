@@ -34,6 +34,8 @@ file_path = f"/app/message_counts/{GROUP_ID}_received.txt"
 received_count = 0
 confirmed_count = 0
 mismatch_count = 0
+duplicate_count = 0  # NEW
+seen_ids = set()     # NEW
 
 if os.path.exists(file_path):
     try:
@@ -82,31 +84,42 @@ try:
         # Poll for a batch of messages
         messages = consumer.poll(timeout_ms=1000, max_records=500)
         batch_count = 0
-
-        for tp, msgs in messages.items():
+        for tp, msgs in messages.items(): 
             for message in msgs:
                 batch_count += 1
                 received_count += 1
-
                 value = message.value
 
-                if value.startswith(EXPECTED_TEXT):
-                    confirmed_count += 1
+                # MOVED INSIDE: This now runs for EVERY message
+                # 1. Extract the Unique ID
+                if "|" in value:
+                    msg_id, content = value.split("|", 1)
+                    
+                    # 2. Check for duplicates
+                    if msg_id in seen_ids:
+                        duplicate_count += 1
+                        print(f"⚠️ DUPLICATE DETECTED: {msg_id}")
+                    else:
+                        seen_ids.add(msg_id)
+
+                    # 3. Validate content as before
+                    if content.startswith(EXPECTED_TEXT):
+                        confirmed_count += 1
+                    else:
+                        mismatch_count += 1
                 else:
                     mismatch_count += 1
-
-
         if batch_count > 0:
-            # Write updated count to file after each batch
             runtime_sec = time.time() - start_time
             with open(file_path, "w") as f:
                 f.write(f"Consumer group: {GROUP_ID}\n")
                 f.write(f"Expected message: {EXPECTED_TEXT}\n")
                 f.write(f"Confirmed (matched): {confirmed_count}\n")
+                f.write(f"Duplicates: {duplicate_count}\n")  # <-- ADD THIS LINE
                 f.write(f"Mismatched: {mismatch_count}\n")
                 f.write(f"Total runtime_seconds: {runtime_sec:.3f}\n")
                 f.write(f"Total runtime_human: {int(runtime_sec//3600)}h {int((runtime_sec%3600)//60)}m {int(runtime_sec%60)}s\n")
-            print(f"🟢 [{GROUP_ID}] Received {batch_count} msgs → total {received_count}")
+            print(f"🟢 [{GROUP_ID}] Received {batch_count} msgs → total {received_count} (Dupes: {duplicate_count})")
 
         else:
             # No messages, short sleep to avoid busy loop
@@ -124,6 +137,7 @@ finally:
         f.write(f"Consumer group: {GROUP_ID}\n")
         f.write(f"Expected message: {EXPECTED_TEXT}\n")
         f.write(f"Confirmed (matched): {confirmed_count}\n")
+        f.write(f"Duplicates: {duplicate_count}\n")
         f.write(f"Mismatched: {mismatch_count}\n")
         f.write(f"Total runtime_seconds: {runtime_sec:.3f}\n")
         f.write(f"Total runtime_human: {int(runtime_sec//3600)}h {int((runtime_sec%3600)//60)}m {int(runtime_sec%60)}s\n")
