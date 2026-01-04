@@ -5,7 +5,7 @@ set -euo pipefail
 # Parse command-line arguments
 # ----------------------------
 # Added 'i:' to the getopts string
-while getopts ":c:p:t:m:r:d:x:f:k:b:l:i:" opt; do
+while getopts ":c:p:t:m:r:x:f:k:b:l:i:" opt; do
   case $opt in
     i) history_id=$OPTARG ;;
     c) consumer_count=$OPTARG ;;
@@ -13,7 +13,6 @@ while getopts ":c:p:t:m:r:d:x:f:k:b:l:i:" opt; do
     t) topic_name=$OPTARG ;;
     m) message_text=$OPTARG ;;
     r) rate_per_sec=$OPTARG ;;
-    d) duration=$OPTARG ;;
     x) partitions=$OPTARG ;;
     f) replication_factor=$OPTARG ;;
     k) kafka_count=$OPTARG ;;
@@ -36,7 +35,6 @@ replication_factor=${replication_factor:-3}
 export TOPIC_NAME=${topic_name:-test-topic}
 export MESSAGE_TEXT=${message_text:-"hello"}
 export RATE_PER_SEC=${rate_per_sec:-1}
-export DURATION=${duration:-""}
 export BATCH_SIZE_BYTES=${BATCH_SIZE_BYTES:-16384}
 export LINGER_MS=${LINGER_MS:-5}
 
@@ -55,7 +53,7 @@ chmod -R 777 "$HISTORY_DIR"
 # Generate docker-compose.override.yml
 # ----------------------------
 # We use this to force Kafka to be ephemeral and Producer/Consumer to use the History folder
-OVERRIDE="docker-compose.override.yml"
+OVERRIDE="$HISTORY_DIR/docker-compose.override.yml"
 echo "services:" > "$OVERRIDE"
 
 # 1. Force Kafka 1-3 to be volume-less (no host folders)
@@ -127,13 +125,13 @@ docker exec kafka1 /opt/kafka/bin/kafka-topics.sh \
 echo "🚀 Scaling producers/consumers..."
 docker compose -f docker-compose.yml -f "$OVERRIDE" up -d --scale producer="$producer_count" --scale consumer="$consumer_count"
 
-# ----------------------------
-# Optional: stop cluster
-# ----------------------------
-if [ -n "$DURATION" ]; then
-    echo "⏳ Running for $DURATION seconds..."
-    sleep "$DURATION"
-    docker compose -f docker-compose.yml -f "$OVERRIDE" down
-fi
 
 echo "🎉 Done. Results in $HISTORY_DIR"
+
+# ----------------------------
+# Mark system as ready
+# ----------------------------
+READY_FILE="$HISTORY_DIR/ready.flag"
+
+echo "✅ All containers are up. Marking system as ready."
+touch "$READY_FILE"

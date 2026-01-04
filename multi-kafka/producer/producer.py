@@ -74,9 +74,9 @@ for _ in range(10):
             acks="all",
             max_in_flight_requests_per_connection=5,
             retries=999999,                      # Keep retrying the same messages
-            request_timeout_ms=60000,            # 60 seconds per attempt
-            retry_backoff_ms=1000,               # Wait 1s between retries
-            metadata_max_age_ms=10000,
+            request_timeout_ms=30000,            # 30`` seconds per attempt
+            retry_backoff_ms=100,                # Wait 100ms between retries
+            metadata_max_age_ms=5000,
         )
         break
     except NoBrokersAvailable:
